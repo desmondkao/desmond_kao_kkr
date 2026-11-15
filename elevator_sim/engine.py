@@ -12,7 +12,7 @@ Each `step()` advances exactly one tick, in this order:
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .dispatch import Dispatcher, make_dispatcher
 from .feed import RequestFeed
@@ -29,6 +29,7 @@ class Config:
     capacity: int
     start_floor: int = 1
     dwell: int = 0  # extra ticks per stop; 0 means stopping is free
+    express: dict[int, frozenset[int]] = field(default_factory=dict)  # car id -> the only floors it stops at
     max_wait: int | None = None  # ticks before a waiting passenger gets priority; None = 3 x floors
 
     def __post_init__(self) -> None:
@@ -36,6 +37,9 @@ class Config:
             raise ValueError(f"invalid config: {self}")
         if not 1 <= self.start_floor <= self.floors:
             raise ValueError(f"start_floor {self.start_floor} is outside 1..{self.floors}")
+        for car_id, floors in self.express.items():
+            if not 0 <= car_id < self.num_cars or not floors <= set(range(1, self.floors + 1)):
+                raise ValueError(f"invalid express car {car_id}: {sorted(floors)}")
 
 
 @dataclass
@@ -52,7 +56,7 @@ class Result:
 class Simulation:
     def __init__(self, config: Config, requests: Iterable[Request], dispatcher: Dispatcher):
         max_wait = config.max_wait if config.max_wait is not None else 3 * config.floors
-        self.cars = [Car(i, config.capacity, config.start_floor, config.dwell, max_wait)
+        self.cars = [Car(i, config.capacity, config.start_floor, config.dwell, max_wait, config.express.get(i))
                      for i in range(config.num_cars)]
         requests = list(requests)
         self._check(requests, config)
@@ -87,7 +91,10 @@ class Simulation:
         self.now += 1
 
     def _assign(self, request: Request) -> None:
-        car_id = self.dispatcher.assign(request, self.cars, self.now)
+        eligible = [car for car in self.cars if car.can_serve(request)]
+        car_id = self.dispatcher.assign(request, eligible, self.now)
+        if car_id not in {car.id for car in eligible}:
+            raise RuntimeError(f"dispatcher gave {request.id} to car {car_id}, which cannot serve it")
         passenger = Passenger(request, car_id)
         self.passengers.append(passenger)
         self.cars[car_id].waiting.append(passenger)
@@ -104,6 +111,8 @@ class Simulation:
                 raise ValueError(f"{r.id}: floor outside 1..{config.floors} ({r.source} -> {r.dest})")
             if r.source == r.dest:
                 raise ValueError(f"{r.id}: source equals dest ({r.source})")
+            if not any(car.can_serve(r) for car in self.cars):
+                raise ValueError(f"{r.id}: no car serves both floor {r.source} and floor {r.dest}")
             seen.add(r.id)
 
 

@@ -78,6 +78,7 @@ class Car:
     floor: int
     dwell: int = 0  # extra ticks the doors stay open after anyone boards or exits
     max_wait: int = 10**9  # a passenger waiting this long becomes overdue and gets priority
+    serves: frozenset[int] | None = None  # express car: the only floors it stops at (None = all)
     direction: Direction = Direction.IDLE
     riders: list[Passenger] = field(default_factory=list)
     waiting: list[Passenger] = field(default_factory=list)
@@ -86,6 +87,9 @@ class Car:
     @property
     def free_slots(self) -> int:
         return self.capacity - len(self.riders)
+
+    def can_serve(self, request: Request) -> bool:
+        return self.serves is None or (request.source in self.serves and request.dest in self.serves)
 
     def overdue(self, now: int) -> Passenger | None:
         """The oldest waiting passenger, if they have waited `max_wait` ticks or more."""
