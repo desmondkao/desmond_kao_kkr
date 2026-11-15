@@ -1,11 +1,12 @@
-"""Scenario generators."""
+"""Scenario generators and the benchmark harness."""
 
 from __future__ import annotations
 
 import pytest
 
 from elevator_sim import Config
-from elevator_sim.dispatch import RoundRobinDispatcher
+from elevator_sim.benchmark import EXPERIMENTS, Experiment, run, to_markdown
+from elevator_sim.dispatch import RoundRobinDispatcher, make_dispatcher
 from elevator_sim.engine import Simulation
 from elevator_sim.scenarios import LOBBY, SCENARIOS, generate
 
@@ -29,3 +30,16 @@ def test_up_peak_is_mostly_from_the_lobby():
     share = sum(r.source == LOBBY for r in requests) / len(requests)
     assert 0.8 < share < 0.9  # configured at 85%
 
+
+def test_benchmark_smoke():
+    exp = Experiment("smoke", {"small": Config(10, 2, 4)}, ("round-robin", "etd"), scenarios=("lunch",), rates=(0.2,))
+    rows = run(exp, seeds=2, duration=50)
+    assert len(rows) == 2  # one per dispatcher, averaged over seeds
+    assert all(row["vs_ideal"] >= 1 for row in rows)  # nobody beats the lower bound
+    assert to_markdown(rows).count("\n") == len(rows) + 1
+
+
+def test_experiments_use_known_names():
+    for exp in EXPERIMENTS.values():
+        for name in exp.dispatchers:
+            make_dispatcher(name, 30)
