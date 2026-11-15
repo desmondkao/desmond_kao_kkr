@@ -9,7 +9,7 @@ from pathlib import Path
 from .csv_io import load_requests, write_passengers, write_positions
 from .engine import Config, Simulation
 from .metrics import format_summary, summarize
-from .policies import LookRouter, RoundRobinDispatcher
+from .policies import LookRouter, RolloutRouter, RoundRobinDispatcher
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -20,11 +20,13 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--capacity", type=int, default=10)
     ap.add_argument("--start-floor", type=int, default=1)
     ap.add_argument("--dwell", type=int, default=0, help="extra ticks per stop")
+    ap.add_argument("--router", choices=["look", "rollout"], default="rollout")
     ap.add_argument("--out", type=Path, default=Path("output"))
     args = ap.parse_args(argv)
 
     config = Config(args.floors, args.cars, args.capacity, args.start_floor, args.dwell)
-    result = Simulation(config, load_requests(args.requests), RoundRobinDispatcher(), LookRouter()).run()
+    router = RolloutRouter(dwell=args.dwell) if args.router == "rollout" else LookRouter()
+    result = Simulation(config, load_requests(args.requests), RoundRobinDispatcher(), router).run()
 
     args.out.mkdir(parents=True, exist_ok=True)
     write_positions(result, args.out / "positions.csv")

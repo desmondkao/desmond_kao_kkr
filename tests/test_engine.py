@@ -9,12 +9,14 @@ import pytest
 from elevator_sim import Config, Request, Simulation
 from elevator_sim.csv_io import load_requests
 from elevator_sim.feed import RequestFeed
-from elevator_sim.policies import LookRouter, RoundRobinDispatcher
+from elevator_sim.policies import LookRouter, RolloutRouter, RoundRobinDispatcher
+
+ROUTERS = [LookRouter, RolloutRouter]
 
 
-def make(requests, floors=10, cars=1, capacity=10, dwell=0, dispatcher=None):
+def make(requests, floors=10, cars=1, capacity=10, dwell=0, dispatcher=None, router=LookRouter):
     config = Config(floors, cars, capacity, dwell=dwell)
-    return Simulation(config, requests, dispatcher or RoundRobinDispatcher(), LookRouter())
+    return Simulation(config, requests, dispatcher or RoundRobinDispatcher(), router())
 
 
 def run(requests, **kw):
@@ -85,8 +87,9 @@ def test_feed_cannot_go_back_in_time():
 
 # ---- constraints: capacity, direction, fixed assignment ----
 
-def test_invariants_hold_every_tick():
-    sim = make(random_requests(300, 15, 300, seed=3), floors=15, cars=3, capacity=4)
+@pytest.mark.parametrize("router", ROUTERS)
+def test_invariants_hold_every_tick(router):
+    sim = make(random_requests(300, 15, 300, seed=3), floors=15, cars=3, capacity=4, router=router)
     first_car = {}
     while not sim.done:
         sim.step()
@@ -97,8 +100,9 @@ def test_invariants_hold_every_tick():
                 assert first_car.setdefault(p.req.id, car.id) == car.id  # assignment never changes
 
 
-def test_riders_never_move_the_wrong_way():
-    result = run(random_requests(300, 15, 400, seed=4), floors=15, cars=3, capacity=5)
+@pytest.mark.parametrize("router", ROUTERS)
+def test_riders_never_move_the_wrong_way(router):
+    result = run(random_requests(300, 15, 400, seed=4), floors=15, cars=3, capacity=5, router=router)
     for p in result.passengers:
         path = [floors[p.car_id] for floors in result.positions[p.board_time:p.dropoff_time + 1]]
         assert all((b - a) * p.direction >= 0 for a, b in zip(path, path[1:])), p.req.id
@@ -112,9 +116,10 @@ def test_full_car_comes_back_for_the_rest():
 
 # ---- "serve all requests eventually" ----
 
+@pytest.mark.parametrize("router", ROUTERS)
 @pytest.mark.parametrize("seed", range(5))
-def test_everyone_delivered_under_overload(seed):
-    result = run(random_requests(500, 25, 200, seed), floors=25, cars=2, capacity=4)
+def test_everyone_delivered_under_overload(seed, router):
+    result = run(random_requests(500, 25, 200, seed), floors=25, cars=2, capacity=4, router=router)
     assert all(p.dropoff_time is not None for p in result.passengers)
 
 

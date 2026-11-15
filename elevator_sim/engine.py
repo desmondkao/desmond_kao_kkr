@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from .feed import RequestFeed
 from .models import Car, Passenger, Request, validate
 from .policies import Dispatcher, Router
+from .rules import advance, service
 
 
 @dataclass(frozen=True)
@@ -73,7 +74,7 @@ class Simulation:
         for request in self.feed.release(self.now):
             self._assign(request)
         for car in self.cars:
-            self._service(car)
+            service(car, self.now, self.router.decide, self.config.dwell)
         self.positions.append(tuple(car.floor for car in self.cars))
         for car in self.cars:
             self._move(car)
@@ -85,29 +86,7 @@ class Simulation:
         self.passengers.append(passenger)
         car.waiting.append(passenger)
 
-    def _service(self, car: Car) -> None:
-        exiting = [p for p in car.riders if p.dest == car.floor]
-        for p in exiting:
-            p.dropoff_time = self.now
-        car.riders = [p for p in car.riders if p.dropoff_time is None]
-
-        car.direction = self.router.decide(car, self.now)
-
-        # `waiting` is in request order, so this is first come, first served.
-        # An IDLE car matches no passenger's direction, so nobody boards it.
-        boarding = [p for p in car.waiting
-                    if p.source == car.floor and p.direction == car.direction][:car.free_slots]
-        for p in boarding:
-            p.board_time = self.now
-        car.waiting = [p for p in car.waiting if p.board_time is None]
-        car.riders += boarding
-
-        if (exiting or boarding) and self.config.dwell:
-            car.held_until = self.now + self.config.dwell
-
     def _move(self, car: Car) -> None:
-        if self.now < car.held_until:
-            return
-        car.floor += car.direction
+        advance(car, self.now)
         if not 1 <= car.floor <= self.config.floors:
             raise RuntimeError(f"router sent car {car.id} off the building (floor {car.floor})")
