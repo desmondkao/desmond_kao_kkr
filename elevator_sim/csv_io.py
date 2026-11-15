@@ -28,15 +28,15 @@ def write_requests(requests: list[Request], path: str | Path) -> None:
 
 def write_positions(result: Result, path: str | Path) -> None:
     """The required log: one row per tick with every car's floor."""
-    header = ["time"] + [f"car_{i}" for i in range(result.config.cars)]
+    header = ["time"] + [f"car_{i}" for i in range(result.config.num_cars)]
     _write(path, header, ([t, *floors] for t, floors in enumerate(result.positions)))
 
 
 def write_passengers(result: Result, path: str | Path) -> None:
     header = ["id", "car", "request_time", "source", "dest", "board_time", "dropoff_time",
               "wait", "travel", "total", "ideal"]
-    _write(path, header, ([p.req.id, p.car_id, p.req.time, p.source, p.dest, p.board_time, p.dropoff_time,
-                           p.wait_time, p.travel_time, p.total_time, p.req.distance] for p in result.passengers))
+    _write(path, header, ([p.request.id, p.car_id, p.request.time, p.source, p.dest, p.board_time, p.dropoff_time,
+                           p.wait_time, p.travel_time, p.total_time, p.request.distance] for p in result.passengers))
 
 
 def _write(path, header, rows) -> None:

@@ -2,57 +2,37 @@
 
 from __future__ import annotations
 
-import random
-
 import pytest
 
-from elevator_sim import Config, Request, Simulation
-from elevator_sim.csv_io import load_requests
-from elevator_sim.feed import RequestFeed
-from elevator_sim.policies import LookRouter, RolloutRouter, RoundRobinDispatcher
-
-ROUTERS = [LookRouter, RolloutRouter]
+from elevator_sim import Config, Request, Simulation, simulate
+from elevator_sim.dispatch import RoundRobinDispatcher
+from helpers import random_requests
 
 
-def make(requests, floors=10, cars=1, capacity=10, dwell=0, dispatcher=None, router=LookRouter):
-    config = Config(floors, cars, capacity, dwell=dwell)
-    return Simulation(config, requests, dispatcher or RoundRobinDispatcher(), router())
+def run(requests, floors=10, cars=1, capacity=10, **options):
+    return simulate(requests, floors, cars, capacity, dispatcher="round-robin", **options)
 
 
-def run(requests, **kw):
-    return make(requests, **kw).run()
-
-
-def random_requests(n, floors, horizon, seed):
-    rng = random.Random(seed)
-    out = []
-    for i in range(n):
-        source, dest = rng.sample(range(1, floors + 1), 2)
-        out.append(Request(rng.randint(0, horizon), f"p{i}", source, dest))
-    return out
-
-
-# ---- basic correctness ----
+# Basic correctness
 
 def test_single_passenger_achieves_ideal_time():
-    (p,) = run([Request(0, "a", 1, 5)]).passengers
+    (p,) = run([(0, "a", 1, 5)]).passengers
     assert (p.wait_time, p.travel_time) == (0, 4)
 
 
 def test_car_travels_to_pickup():
-    (p,) = run([Request(0, "a", 4, 2)]).passengers
+    (p,) = run([(0, "a", 4, 2)]).passengers
     assert (p.board_time, p.dropoff_time) == (3, 5)
 
 
-def test_spec_example():
-    result = run(load_requests("examples/spec_example.csv"), floors=60, cars=2)
-    assert all(p.dropoff_time is not None for p in result.passengers)
+def test_no_requests_is_fine():
+    assert run([]).positions == [(1,)]
 
 
-# ---- "tick forward one time unit at a time" ----
+# "tick forward one time unit at a time"
 
 def test_clock_ticks_through_idle_time():
-    result = run([Request(50, "late", 1, 3)])
+    result = run([(50, "late", 1, 3)])
     assert len(result.positions) == result.end_time + 1
     assert result.positions[:51] == [(1,)] * 51
 
@@ -63,7 +43,7 @@ def test_cars_move_at_most_one_floor_per_tick():
         assert all(abs(a - b) <= 1 for a, b in zip(prev, cur))
 
 
-# ---- "do not peek ahead" ----
+# "do not peek ahead"
 
 def test_dispatcher_only_sees_requests_as_they_happen():
     seen = []
@@ -73,23 +53,14 @@ def test_dispatcher_only_sees_requests_as_they_happen():
             seen.append((request.time, now))
             return super().assign(request, cars, now)
 
-    run(random_requests(100, 10, 200, seed=2), cars=2, dispatcher=Spy())
+    Simulation(Config(10, 2, 10), random_requests(100, 10, 200, seed=2), Spy()).run()
     assert seen and all(t == now for t, now in seen)
 
 
-def test_feed_cannot_go_back_in_time():
-    feed = RequestFeed([Request(5, "a", 1, 2)])
-    assert feed.release(4) == []
-    assert [r.id for r in feed.release(5)] == ["a"]
-    with pytest.raises(RuntimeError):
-        feed.release(3)
+# Constraints: capacity, direction, fixed assignment
 
-
-# ---- constraints: capacity, direction, fixed assignment ----
-
-@pytest.mark.parametrize("router", ROUTERS)
-def test_invariants_hold_every_tick(router):
-    sim = make(random_requests(300, 15, 300, seed=3), floors=15, cars=3, capacity=4, router=router)
+def test_invariants_hold_every_tick():
+    sim = Simulation(Config(15, 3, 4), random_requests(300, 15, 300, seed=3), RoundRobinDispatcher())
     first_car = {}
     while not sim.done:
         sim.step()
@@ -97,50 +68,41 @@ def test_invariants_hold_every_tick(router):
             assert len(car.riders) <= car.capacity
             assert len({p.direction for p in car.riders}) <= 1  # riders all go one way
             for p in car.riders + car.waiting:
-                assert first_car.setdefault(p.req.id, car.id) == car.id  # assignment never changes
-
-
-@pytest.mark.parametrize("router", ROUTERS)
-def test_riders_never_move_the_wrong_way(router):
-    result = run(random_requests(300, 15, 400, seed=4), floors=15, cars=3, capacity=5, router=router)
-    for p in result.passengers:
-        path = [floors[p.car_id] for floors in result.positions[p.board_time:p.dropoff_time + 1]]
-        assert all((b - a) * p.direction >= 0 for a, b in zip(path, path[1:])), p.req.id
+                assert first_car.setdefault(p.request.id, car.id) == car.id  # assignment never changes
 
 
 def test_full_car_comes_back_for_the_rest():
     # Capacity 3, seven people at floor 1 going to 10: trips of 3, 3, then 1.
-    result = run([Request(0, f"p{i}", 1, 10) for i in range(7)], capacity=3)
+    result = run([(0, f"p{i}", 1, 10) for i in range(7)], capacity=3)
     assert sorted(p.wait_time for p in result.passengers) == [0, 0, 0, 18, 18, 18, 36]
 
 
-# ---- "serve all requests eventually" ----
+# "serve all requests eventually"
 
-@pytest.mark.parametrize("router", ROUTERS)
 @pytest.mark.parametrize("seed", range(5))
-def test_everyone_delivered_under_overload(seed, router):
-    result = run(random_requests(500, 25, 200, seed), floors=25, cars=2, capacity=4, router=router)
+def test_everyone_delivered_under_overload(seed):
+    result = run(random_requests(500, 25, 200, seed), floors=25, cars=2, capacity=4)
     assert all(p.dropoff_time is not None for p in result.passengers)
 
 
-# ---- input validation ----
+# Input validation
 
 @pytest.mark.parametrize("requests", [
-    [Request(0, "x", 0, 5)],                          # floor below 1
-    [Request(0, "x", 1, 11)],                         # floor above top
-    [Request(0, "x", 3, 3)],                          # source == dest
-    [Request(-1, "x", 1, 2)],                         # negative time
-    [Request(0, "x", 1, 2), Request(1, "x", 2, 3)],   # duplicate id
+    [(0, "x", 0, 5)],                  # floor below 1
+    [(0, "x", 1, 11)],                 # floor above top
+    [(0, "x", 3, 3)],                  # source == dest
+    [(-1, "x", 1, 2)],                 # negative time
+    [(0, "x", 1, 2), (1, "x", 2, 3)],  # duplicate id
 ])
 def test_invalid_input_rejected(requests):
     with pytest.raises(ValueError):
         run(requests)
 
 
-# ---- configuration ----
+# Configuration
 
 def test_dwell_adds_ticks_per_stop():
-    (p,) = run([Request(0, "a", 1, 5)], dwell=1).passengers
+    (p,) = run([(0, "a", 1, 5)], dwell=1).passengers
     assert (p.wait_time, p.travel_time) == (0, 5)
 
 

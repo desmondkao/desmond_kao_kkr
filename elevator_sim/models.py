@@ -1,9 +1,11 @@
-"""Core data types. Floors are numbered 1..n; one tick = one floor of travel."""
+"""Core data types. Floors are numbered 1..n, floor 1 is the lobby, one tick = one floor of travel."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import IntEnum
+
+LOBBY = 1
 
 
 class Direction(IntEnum):
@@ -29,7 +31,7 @@ class Request:
 
     @property
     def distance(self) -> int:
-        """Ideal trip time: no waiting, direct ride. A lower bound for any scheduler."""
+        """Trip time with no waiting: a lower bound no scheduler can beat."""
         return abs(self.dest - self.source)
 
 
@@ -37,19 +39,26 @@ class Request:
 class Passenger:
     """A request bound to the car that will serve it. `car_id` never changes."""
 
-    req: Request
+    request: Request
     car_id: int
     board_time: int | None = None
     dropoff_time: int | None = None
 
-    # Shortcuts so scheduling code reads naturally (p.source, not p.req.source).
-    source = property(lambda self: self.req.source)
-    dest = property(lambda self: self.req.dest)
-    direction = property(lambda self: self.req.direction)
+    @property
+    def source(self) -> int:
+        return self.request.source
+
+    @property
+    def dest(self) -> int:
+        return self.request.dest
+
+    @property
+    def direction(self) -> Direction:
+        return self.request.direction
 
     @property
     def wait_time(self) -> int:
-        return self.board_time - self.req.time
+        return self.board_time - self.request.time
 
     @property
     def travel_time(self) -> int:
@@ -57,37 +66,23 @@ class Passenger:
 
     @property
     def total_time(self) -> int:
-        return self.dropoff_time - self.req.time
+        return self.dropoff_time - self.request.time
 
 
 @dataclass(slots=True)
 class Car:
-    """An elevator car. `waiting`: assigned but not yet aboard. `riders`: aboard."""
+    """An elevator car. `waiting`: assigned but not aboard, in request order. `riders`: aboard."""
 
     id: int
     capacity: int
     floor: int
+    dwell: int = 0  # extra ticks the doors stay open after anyone boards or exits
     direction: Direction = Direction.IDLE
     riders: list[Passenger] = field(default_factory=list)
     waiting: list[Passenger] = field(default_factory=list)
-    held_until: int = 0  # doors stay open (no movement) while now < held_until
+    held_until: int = 0  # the car cannot move while now < held_until
 
     @property
     def free_slots(self) -> int:
         return self.capacity - len(self.riders)
 
-
-def validate(requests: list[Request], floors: int) -> None:
-    """Reject bad input up front, naming the offending passenger."""
-    seen: set[str] = set()
-    for r in requests:
-        problem = (
-            "duplicate id" if r.id in seen
-            else "negative time" if r.time < 0
-            else "floor out of range" if not (1 <= r.source <= floors and 1 <= r.dest <= floors)
-            else "source equals dest" if r.source == r.dest
-            else None
-        )
-        if problem:
-            raise ValueError(f"{r.id}: {problem} ({r})")
-        seen.add(r.id)

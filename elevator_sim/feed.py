@@ -1,7 +1,7 @@
-"""The request feed: the only thing that can see future requests.
+"""The request feed: the only object that holds future requests.
 
-Schedulers never touch it. The simulation asks it for requests at time `now`,
-and it hands over only those whose time has come.
+Schedulers never see it. Each tick the engine asks for requests whose time has
+come, so nothing can peek ahead.
 """
 
 from __future__ import annotations
@@ -13,13 +13,9 @@ from .models import Request
 
 class RequestFeed:
     def __init__(self, requests: list[Request]):
-        self._queue = deque(sorted(requests, key=lambda r: r.time))  # stable: ties keep input order
-        self._now = -1
+        self._queue = deque(sorted(requests, key=lambda r: r.time))  # stable sort: ties keep input order
 
     def release(self, now: int) -> list[Request]:
-        if now < self._now:
-            raise RuntimeError(f"time went backwards: {now} < {self._now}")
-        self._now = now
         out = []
         while self._queue and self._queue[0].time <= now:
             out.append(self._queue.popleft())

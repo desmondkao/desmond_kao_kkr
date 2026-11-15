@@ -23,7 +23,7 @@ def describe(values: list[int]) -> dict[str, float]:
 def summarize(result: Result) -> dict:
     ps = result.passengers
     totals = [p.total_time for p in ps]
-    ideal = [p.req.distance for p in ps]
+    ideal = [p.request.distance for p in ps]
     return {
         "passengers": len(ps),
         "end_time": result.end_time,
