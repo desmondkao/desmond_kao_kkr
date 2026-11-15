@@ -29,6 +29,7 @@ class Config:
     capacity: int
     start_floor: int = 1
     dwell: int = 0  # extra ticks per stop; 0 means stopping is free
+    max_wait: int | None = None  # ticks before a waiting passenger gets priority; None = 3 x floors
 
     def __post_init__(self) -> None:
         if self.floors < 2 or self.num_cars < 1 or self.capacity < 1 or self.dwell < 0:
@@ -50,7 +51,8 @@ class Result:
 
 class Simulation:
     def __init__(self, config: Config, requests: Iterable[Request], dispatcher: Dispatcher):
-        self.cars = [Car(i, config.capacity, config.start_floor, config.dwell)
+        max_wait = config.max_wait if config.max_wait is not None else 3 * config.floors
+        self.cars = [Car(i, config.capacity, config.start_floor, config.dwell, max_wait)
                      for i in range(config.num_cars)]
         requests = list(requests)
         self._check(requests, config)

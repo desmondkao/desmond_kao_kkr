@@ -85,6 +85,26 @@ def test_everyone_delivered_under_overload(seed):
     assert all(p.dropoff_time is not None for p in result.passengers)
 
 
+def starvation_case(n_later):
+    # One full car keeps getting new riders at the lobby, so it never stops for P at floor 5.
+    return [(0, "P", 5, 15)] + [(10 * i, f"q{i}", 1, 10) for i in range(n_later)]
+
+
+def test_without_a_guard_a_passenger_can_wait_without_limit():
+    waits = [next(p.wait_time for p in run(starvation_case(n), floors=20, capacity=1, max_wait=10**6).passengers
+                  if p.request.id == "P") for n in (10, 20, 40)]
+    assert waits[0] < waits[1] < waits[2]  # grows with the number of later arrivals
+
+
+@pytest.mark.parametrize("n_later", [10, 40, 80])
+def test_overdue_passenger_is_served_within_a_bound(n_later):
+    floors, max_wait = 20, 30
+    result = run(starvation_case(n_later), floors=floors, capacity=1, max_wait=max_wait)
+    p = next(p for p in result.passengers if p.request.id == "P")
+    # Once overdue, P has a reserved seat and is the car's target: reached within 3 sweeps.
+    assert p.wait_time <= max_wait + 3 * (floors - 1)
+
+
 # Input validation
 
 @pytest.mark.parametrize("requests", [

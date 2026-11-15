@@ -1,6 +1,8 @@
 """Routing: which way a car heads next. Re-decided every tick.
 
 LOOK: keep going while there is work ahead, reverse when there is none.
+An overdue passenger (see Car.overdue) becomes the car's next target, so
+nobody waits forever.
 """
 
 from __future__ import annotations
@@ -12,6 +14,8 @@ def look(car: Car, now: int) -> Direction:
     """Called after riders get off at the current floor and before anyone boards."""
     if car.riders:
         return car.riders[0].direction  # boarding rule keeps all riders going one way
+    if overdue := car.overdue(now):
+        return _toward(car, overdue)
     if not car.waiting:
         return Direction.IDLE
     if car.direction is Direction.IDLE:  # starting from rest: go to the nearest (oldest on ties)

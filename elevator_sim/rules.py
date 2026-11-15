@@ -20,8 +20,13 @@ def service(car: Car, now: int) -> None:
     car.direction = look(car, now)
 
     # First come, first served (`waiting` is in request order, oldest first).
+    # While someone is overdue, keep a seat free for them; LOOK is heading their way.
     here = [p for p in car.waiting if p.source == car.floor and p.direction == car.direction]
-    boarding = here[:car.free_slots]
+    seats = car.free_slots
+    overdue = car.overdue(now)
+    if overdue and overdue not in here:
+        seats -= 1
+    boarding = here[:max(seats, 0)]
     for p in boarding:
         p.board_time = now
     car.waiting = [p for p in car.waiting if p.board_time is None]

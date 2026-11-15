@@ -77,6 +77,7 @@ class Car:
     capacity: int
     floor: int
     dwell: int = 0  # extra ticks the doors stay open after anyone boards or exits
+    max_wait: int = 10**9  # a passenger waiting this long becomes overdue and gets priority
     direction: Direction = Direction.IDLE
     riders: list[Passenger] = field(default_factory=list)
     waiting: list[Passenger] = field(default_factory=list)
@@ -86,3 +87,8 @@ class Car:
     def free_slots(self) -> int:
         return self.capacity - len(self.riders)
 
+    def overdue(self, now: int) -> Passenger | None:
+        """The oldest waiting passenger, if they have waited `max_wait` ticks or more."""
+        if self.waiting and now - self.waiting[0].request.time >= self.max_wait:
+            return self.waiting[0]
+        return None
