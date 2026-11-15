@@ -17,7 +17,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--floors", type=int, required=True)
     ap.add_argument("--cars", type=int, default=3)
     ap.add_argument("--capacity", type=int, default=10)
-    ap.add_argument("--dispatcher", default="round-robin")
+    ap.add_argument("--dispatcher", default="etd", help="etd (default), nearest, zone, round-robin, etd-p<k>")
     ap.add_argument("--dwell", type=int, default=0, help="extra ticks per stop (default 0)")
     ap.add_argument("--start-floor", type=int, default=1)
     ap.add_argument("--out", type=Path, default=Path("output"))

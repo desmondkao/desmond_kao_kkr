@@ -108,7 +108,7 @@ class Simulation:
 
 
 def simulate(requests: Iterable[Request | tuple], floors: int, num_cars: int = 3, capacity: int = 10,
-             dispatcher: str = "round-robin", **options) -> Result:
+             dispatcher: str = "etd", **options) -> Result:
     """One-call entry point. `requests` are Request objects or (time, id, source, dest) tuples.
 
     >>> simulate([(0, "a", 1, 5), (0, "b", 1, 3)], floors=10).passengers[0].total_time
