@@ -89,7 +89,11 @@ Making cars 2-3 express to floors 16-30 brings ETD level with zoning (57), but c
 
 Full tables are in `results/`.
 
-## Assumptions
+## Recommendation
+
+For a building like the one simulated: use ETD by default, and switch to zoning or an express bank for the morning rush. Before relying on the numbers, calibrate the model with the building's own lobby logs (real arrival patterns, door times and travel speed).
+
+## Assumptions and simplifications
 
 - Floors are 1 to n; floor 1 is the lobby. Cars start at floor 1.
 - One tick is one floor. Stops are free by default, because the brief only defines travel time; `--dwell` adds time per stop, and every experiment is also run at dwell 1.
