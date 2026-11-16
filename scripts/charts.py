@@ -1,7 +1,7 @@
 """Regenerate every chart in docs/charts/: python scripts/charts.py
 
-Charts 2 and 6 read results/*.csv (python -m elevator_sim.benchmark); the rest
-run the simulator directly with fixed seeds.
+algorithms and fairness read results/*.csv (python -m elevator_sim.benchmark);
+overload and load_sweep run the simulator directly with fixed seeds.
 """
 
 from __future__ import annotations
@@ -20,9 +20,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))  # so it runs from a checkout without installing
 
 from elevator_sim.benchmark import EXPRESS, STANDARD
-from elevator_sim.csv_io import load_requests
 from elevator_sim.dispatch import make_dispatcher
-from elevator_sim.engine import Simulation, simulate
+from elevator_sim.engine import Simulation
 from elevator_sim.scenarios import SCENARIOS, generate
 
 OUT = ROOT / "docs" / "charts"
@@ -31,7 +30,6 @@ INK, MUTED, GRID, SURFACE = "#0b0b0b", "#52514e", "#e4e3df", "#fcfcfb"
 COLOR = {"etd": "#2a78d6", "zone": "#eb6834", "etd + express": "#1baf7a",
          "round-robin": "#eda100", "nearest": "#e87ba4",
          "etd-p1": "#9cc2f0", "etd-p2": "#2a78d6", "etd-p4": "#0d3f7f"}
-CAR_COLORS = ["#6250d6", "#008300", "#e34948", "#52514e"]  # cars are not dispatchers: separate hues
 BASELINES = ("round-robin", "nearest", "zone", "etd")
 LABEL = {"etd": "ETD", "zone": "Zone", "etd + express": "ETD + express", "round-robin": "Round robin",
          "nearest": "Nearest car", "etd-p1": "ETD, p = 1", "etd-p2": "ETD, p = 2", "etd-p4": "ETD, p = 4"}
@@ -67,30 +65,6 @@ def save(fig, name, title, subtitle):
     fig.savefig(OUT / name, facecolor=SURFACE)
     plt.close(fig)
     print("wrote", OUT / name)
-
-
-def space_time():
-    result = simulate(load_requests(ROOT / "examples" / "up_peak.csv"), floors=30, num_cars=4)
-    horizon = 150
-    pos = np.array(result.positions[:horizon + 1])
-    fig, ax = plt.subplots()
-    fig.subplots_adjust(top=0.84, right=0.86)
-    for car in range(pos.shape[1]):
-        c = CAR_COLORS[car]
-        ax.plot(range(len(pos)), pos[:, car], color=c, label=f"car {car}")
-        mine = [p for p in result.passengers if p.car_id == car]
-        ax.scatter([p.board_time for p in mine if p.board_time <= horizon],
-                   [p.request.source for p in mine if p.board_time <= horizon],
-                   marker="^", s=70, color=c, edgecolors=SURFACE, linewidths=1.5, zorder=3)
-        ax.scatter([p.dropoff_time for p in mine if p.dropoff_time <= horizon],
-                   [p.request.dest for p in mine if p.dropoff_time <= horizon],
-                   marker="v", s=70, facecolors=SURFACE, edgecolors=c, linewidths=1.5, zorder=3)
-    ax.scatter([], [], marker="^", s=70, color=MUTED, label="pickup")
-    ax.scatter([], [], marker="v", s=70, facecolors=SURFACE, edgecolors=MUTED, label="drop-off")
-    ax.set(xlabel="tick", ylabel="floor", xlim=(0, horizon), ylim=(0.5, 30.5), yticks=[1, 5, 10, 15, 20, 25, 30])
-    ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1))
-    save(fig, "space_time.png", "Four cars sweep up from the lobby and back, picking up along the way",
-         "examples/up_peak.csv, 30 floors, 4 cars, ETD dispatcher: each line is one car's floor at each tick")
 
 
 def algorithms():
@@ -167,21 +141,6 @@ def load_sweep():
          ETD_NOTE + "Up-peak, 30 floors, 4 cars; 3 seeds x 600 ticks per point")
 
 
-def wait_cdf():
-    fig, ax = plt.subplots()
-    fig.subplots_adjust(top=0.84, right=0.84)
-    for name in BASELINES:
-        waits = np.sort([p.wait_time for seed in range(3) for p in
-                         run(STANDARD, generate("lunch", 30, 0.8, 1200, seed), name).passengers])
-        ax.step(waits, np.arange(1, len(waits) + 1) / len(waits), where="post", color=COLOR[name], label=LABEL[name])
-        print(f"  wait_cdf {name}: median {np.median(waits):.0f}, p95 {np.percentile(waits, 95):.0f}")
-    ax.set(xlabel="wait time, ticks", ylabel="share of passengers who waited at most this long",
-           xlim=(0, None), ylim=(0, 1.01))
-    ax.legend(loc="lower right")
-    save(fig, "wait_cdf.png", "Under ETD most lunch-time passengers are picked up within a few ticks",
-         ETD_NOTE + "Lunch traffic, 0.8 passengers/tick, dwell = 0, 3 seeds x 1200 ticks pooled")
-
-
 def fairness():
     rows = read_rows("fairness_dwell1")
     fig, axes = plt.subplots(1, 2)
@@ -199,27 +158,9 @@ def fairness():
          ETD_NOTE + "ETD with cost = total_time^p, 0.8 passengers/tick, dwell = 1, 10 seeds x 1200 ticks")
 
 
-def wait_by_floor():
-    floors = range(2, 31)
-    fig, ax = plt.subplots()
-    fig.subplots_adjust(top=0.84)
-    waits = {f: [] for f in floors}
-    for seed in range(10):
-        for p in run(STANDARD, generate("interfloor", 30, 0.8, 1200, seed), "etd").passengers:
-            waits[p.request.source].append(p.wait_time)
-    means = [np.mean(waits[f]) for f in floors]
-    sems = [1.96 * np.std(waits[f]) / np.sqrt(len(waits[f])) for f in floors]
-    ax.bar(floors, means, yerr=sems, color=COLOR["etd"], width=0.8, ecolor=MUTED, capsize=3)
-    ax.set(xlabel="pickup floor", ylabel="mean wait, ticks", xlim=(1, 31))
-    ax.grid(axis="x", visible=False)
-    print(f"  wait_by_floor: floors 2-3 & 29-30 {np.mean(means[:2] + means[-2:]):.1f}, others {np.mean(means[2:-2]):.1f}")
-    save(fig, "wait_by_floor.png", "Only the end floors wait longer (~1.5 ticks); no broad middle-floor bias",
-         ETD_NOTE + "ETD, interfloor traffic, 0.8 passengers/tick, dwell = 0, 10 seeds x 1200 ticks; bars ± 95% CI")
-
-
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
-    charts = [space_time, overload, load_sweep, wait_cdf, wait_by_floor, algorithms, fairness]
+    charts = [algorithms, overload, load_sweep, fairness]
     only = set(sys.argv[1:])
     for chart in charts:
         if not only or chart.__name__ in only:
