@@ -27,11 +27,10 @@ def describe(values: list[int]) -> dict[str, float]:
 
 
 def summarize(result: Result) -> dict:
-    ps = sorted(result.passengers, key=lambda p: p.request.time)
+    ps = result.passengers
     if not ps:
         return {"passengers": 0, "end_time": result.end_time}
     totals = [p.total_time for p in ps]
-    third = max(1, len(ps) // 3)
     slowest = max(ps, key=lambda p: p.total_time)
     return {
         "passengers": len(ps),
@@ -41,8 +40,6 @@ def summarize(result: Result) -> dict:
         "total": describe(totals),
         # No scheduler can beat |dest - source| for anyone, so this ratio is >= 1.
         "total_vs_ideal": sum(totals) / sum(p.request.distance for p in ps),
-        # Late arrivals slower than early ones means the queue is growing: the load is too high.
-        "drift": sum(totals[-third:]) / third - sum(totals[:third]) / third,
         "per_car": dict(sorted(Counter(p.car_id for p in ps).items())),
         "slowest": {"id": slowest.request.id, "total": slowest.total_time, "wait": slowest.wait_time},
     }
@@ -57,9 +54,6 @@ def format_summary(s: dict) -> str:
         lines.append(f"{key:>8}" + "".join(f"{s[key][k]:>8.1f}" for k in STATS))
     lines += [
         f"total time / ideal time: {s['total_vs_ideal']:.2f}  (1.00 = nobody waited and every ride was direct)",
-        f"drift: last third of passengers took {s['drift']:+.1f} ticks vs the first third"
-        + ("  (queue growing: load too high)"
-           if s["passengers"] >= 30 and s["drift"] > 0.5 * s["total"]["mean"] else ""),
         f"passengers per car: {s['per_car']}",
         f"slowest: {s['slowest']['id']} (total {s['slowest']['total']}, of which waiting {s['slowest']['wait']})",
     ]

@@ -1,7 +1,7 @@
 """Regenerate every chart in docs/charts/: python scripts/charts.py
 
 algorithms, fairness and capacity read results/*.csv (benchmark and capacity modules);
-overload and load_sweep run the simulator directly with fixed seeds.
+overload runs the simulator directly with fixed seeds.
 """
 
 from __future__ import annotations
@@ -120,27 +120,6 @@ def overload():
          ETD_NOTE + "Up-peak, 0.8 passengers/tick, dwell = 1: mean total time by arrival time (60-tick bins, 3 seeds)")
 
 
-def load_sweep():
-    rates = [0.2, 0.4, 0.6, 0.8, 1.0]
-    fig, axes = plt.subplots(1, 2, sharey=True)
-    fig.subplots_adjust(top=0.80, bottom=0.12, wspace=0.08)
-    for ax, dwell in zip(axes, (0, 1)):
-        for name in ("zone", "etd", "etd + express"):
-            means = []
-            for rate in rates:
-                totals = [p.total_time for seed in range(3) for p in
-                          run(building(name, dwell), generate("up-peak", 30, rate, 600, seed),
-                              name.split()[0]).passengers]
-                means.append(np.mean(totals))
-            ax.plot(rates, means, color=COLOR[name], marker="o", ms=9, label=LABEL[name])
-        ax.set_title(f"dwell = {dwell}", loc="left", color=INK)
-        ax.set(xlabel="arrival rate (passengers per tick)", xticks=rates)
-    axes[0].set(ylabel="mean total time, ticks", ylim=(0, None))
-    axes[0].legend(loc="upper left")
-    save(fig, "load_sweep.png", "ETD leads until the building nears saturation, then degrades faster than zone",
-         ETD_NOTE + "Up-peak, 30 floors, 4 cars; 3 seeds x 600 ticks per point")
-
-
 def fairness():
     rows = read_rows("fairness_dwell1")
     fig, axes = plt.subplots(1, 2)
@@ -181,7 +160,7 @@ def capacity():
 
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
-    charts = [algorithms, overload, load_sweep, fairness, capacity]
+    charts = [algorithms, overload, fairness, capacity]
     only = set(sys.argv[1:])
     for chart in charts:
         if not only or chart.__name__ in only:

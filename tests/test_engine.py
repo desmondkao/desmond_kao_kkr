@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from elevator_sim import Config, Request, Simulation, simulate
+from elevator_sim import Config, Simulation, simulate
 from elevator_sim.dispatch import RoundRobinDispatcher
 from helpers import random_requests
 

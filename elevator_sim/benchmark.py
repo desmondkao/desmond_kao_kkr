@@ -48,7 +48,7 @@ BASE = {
 }
 EXPERIMENTS = {f"{name}_dwell{dwell}": exp.with_dwell(dwell) for dwell in (0, 1) for name, exp in BASE.items()}
 
-COLUMNS = ("wait_mean", "total_mean", "total_ci95", "total_p95", "total_max", "drift", "vs_ideal")
+COLUMNS = ("wait_mean", "total_mean", "total_ci95", "total_p95", "total_max", "vs_ideal")
 
 
 def run(exp: Experiment, seeds: int, duration: int) -> list[dict]:
@@ -72,7 +72,6 @@ def run(exp: Experiment, seeds: int, duration: int) -> list[dict]:
             "total_ci95": 1.96 * statistics.stdev(means) / len(means) ** 0.5 if len(means) > 1 else 0.0,
             "total_p95": statistics.mean(s["total"]["p95"] for s in summaries),
             "total_max": statistics.mean(s["total"]["max"] for s in summaries),
-            "drift": statistics.mean(s["drift"] for s in summaries),
             "vs_ideal": statistics.mean(s["total_vs_ideal"] for s in summaries),
         })
     return rows
@@ -111,8 +110,7 @@ def main(argv: list[str] | None = None) -> None:
         table = to_markdown(rows)
         (args.out / f"{name}.md").write_text(
             f"# {name}\n\n{exp.question}\n\n{args.seeds} seeds x {args.duration} ticks of arrivals. "
-            "Times in ticks. `drift` = how much slower the last third of passengers were than the "
-            "first third; a large drift means the queue is growing (overloaded).\n\n" + table + "\n")
+            "Times in ticks.\n\n" + table + "\n")
         print(f"wrote {args.out / name}.md")
 
 

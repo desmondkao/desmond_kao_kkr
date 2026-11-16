@@ -34,7 +34,7 @@ python -m elevator_sim.capacity     # building-size comparison -> results/ (abou
 python scripts/charts.py            # charts -> docs/charts/
 ```
 
-Besides min/mean/max wait and total time, the summary reports total time divided by the ideal (`|dest - source|`, which no scheduler can beat) and drift: how much longer the last third of passengers took than the first third. Large positive drift means the queue is growing.
+Besides min/mean/max wait and total time, the summary reports total time divided by the ideal (`|dest - source|`, which no scheduler can beat).
 
 ## Design
 
@@ -63,7 +63,7 @@ ETD is 15-33% faster than the best alternative in each row. The direction-aware 
 
 ![dispatchers](docs/charts/algorithms.png)
 
-**Where ETD loses: the morning rush.** In the simulated up-peak with one-tick stops, ETD's queue keeps growing (ETD 85, zone 58). ETD places each lobby passenger wherever is best for them right now, so every car gets a mix of destinations: an ETD car leaving the lobby stops at about 8 floors and climbs to floor 28 on average, against 4-5 floors and floor 19 for a zoned car. Longer round trips mean each car carries fewer people per minute. Making cars 2-3 express to floors 16-30 brings ETD level with zoning (57), but costs 4-5 ticks at lunch, when trips go both ways. With free stops the same thing happens at a higher load, 1.0 per tick (`docs/charts/load_sweep.png`, 3 seeds × 600 ticks). The mechanism is general; the load at which it kicks in depends on my synthetic traffic.
+**Where ETD loses: the morning rush.** In the simulated up-peak with one-tick stops, ETD's queue keeps growing (ETD 85, zone 58). ETD places each lobby passenger wherever is best for them right now, so every car gets a mix of destinations: an ETD car leaving the lobby stops at about 8 floors and climbs to floor 28 on average, against 4-5 floors and floor 19 for a zoned car. Longer round trips mean each car carries fewer people per minute. Making cars 2-3 express to floors 16-30 brings ETD level with zoning (57), but costs 4-5 ticks at lunch, when trips go both ways. With free stops the same thing happens at a higher load: ETD sustains 0.88 passengers per tick in up-peak, zoning 1.21 (see building sizes below). The mechanism is general; the load at which it kicks in depends on my synthetic traffic.
 
 ![overload](docs/charts/overload.png)
 
