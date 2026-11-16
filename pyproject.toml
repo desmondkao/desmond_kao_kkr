@@ -7,6 +7,7 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
+charts = ["matplotlib>=3.7"]  # only for scripts/charts.py
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
