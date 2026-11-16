@@ -12,28 +12,21 @@ COLUMNS = ("time", "id", "source", "dest")
 
 
 def load_requests(path: str | Path) -> list[Request]:
-    """Read `time,id,source,dest` rows. The header line is optional; errors name the line."""
+    """Read a CSV whose first line is `time,id,source,dest`. Errors name the line."""
     with open(path, newline="") as f:
-        rows = [(n, [cell.strip() for cell in row]) for n, row in enumerate(csv.reader(f), start=1)
-                if any(cell.strip() for cell in row)]
-    columns = list(COLUMNS)
-    if rows and not _is_int(rows[0][1][0]):  # first cell isn't a time, so it's a header
-        _, columns = rows.pop(0)
-        if sorted(columns) != sorted(COLUMNS):
-            raise ValueError(f"{path}: header must be {','.join(COLUMNS)}, got {','.join(columns)}")
-    requests = []
-    for line, row in rows:
-        if len(row) != len(COLUMNS):
-            raise ValueError(f"{path}:{line}: expected {len(COLUMNS)} fields, got {row}")
-        f = dict(zip(columns, row))
-        if not all(_is_int(f[c]) for c in ("time", "source", "dest")):
-            raise ValueError(f"{path}:{line}: time, source and dest must be whole numbers, got {row}")
-        requests.append(Request(int(f["time"]), f["id"], int(f["source"]), int(f["dest"])))
+        reader = csv.reader(f, skipinitialspace=True)
+        if next(reader, None) != list(COLUMNS):
+            raise ValueError(f"{path}: the first line must be {','.join(COLUMNS)}")
+        requests = []
+        for line, row in enumerate(reader, start=2):
+            if not row:
+                continue
+            try:
+                time, id_, source, dest = row
+                requests.append(Request(int(time), id_, int(source), int(dest)))
+            except ValueError:
+                raise ValueError(f"{path}:{line}: expected time,id,source,dest as numbers, got {row}") from None
     return requests
-
-
-def _is_int(text: str) -> bool:
-    return text.lstrip("-").isdigit()
 
 
 def write_requests(requests: list[Request], path: str | Path) -> None:

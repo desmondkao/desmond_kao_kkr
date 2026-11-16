@@ -23,7 +23,7 @@ def parse_express(spec: str) -> dict[int, frozenset[int]]:
 
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="elevator_sim", description=__doc__)
-    ap.add_argument("requests", type=Path, help="CSV of time,id,source,dest (header optional)")
+    ap.add_argument("requests", type=Path, help="CSV with header time,id,source,dest")
     ap.add_argument("--floors", type=int, required=True)
     ap.add_argument("--cars", type=int, default=3)
     ap.add_argument("--capacity", type=int, default=10)
