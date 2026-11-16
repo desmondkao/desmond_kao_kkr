@@ -56,7 +56,8 @@ class Result:
 class Simulation:
     def __init__(self, config: Config, requests: Iterable[Request], dispatcher: Dispatcher):
         max_wait = config.max_wait if config.max_wait is not None else 3 * config.floors
-        self.cars = [Car(i, config.capacity, config.start_floor, config.dwell, max_wait, config.express.get(i))
+        self.cars = [Car(i, config.capacity, floor=config.start_floor, dwell=config.dwell, max_wait=max_wait,
+                         serves=config.express.get(i))
                      for i in range(config.num_cars)]
         requests = list(requests)
         self._check(requests, config)

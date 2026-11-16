@@ -69,7 +69,8 @@ class ZoneDispatcher:
     """Baseline: split the floors above the lobby into one band per car.
 
     A trip belongs to the band of its non-lobby end: the upper floor for lobby
-    trips, the pickup floor otherwise.
+    trips, the pickup floor otherwise. Bands are split across the cars that can
+    serve the trip, so with express cars the bands differ per trip.
     """
 
     def __init__(self, floors: int):

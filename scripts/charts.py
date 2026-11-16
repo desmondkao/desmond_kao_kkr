@@ -154,7 +154,7 @@ def capacity():
         ax.grid(axis="x", visible=False)
     axes[0].set(ylabel="capacity, % of the best dispatcher", ylim=(0, 105))
     axes[0].legend(loc="upper center", bbox_to_anchor=(1.03, -0.2), ncol=5, fontsize=14)
-    save(fig, "capacity.png", "Zoning carries the most morning-rush traffic in 5 of 6 buildings; at lunch ETD does",
+    save(fig, "capacity.png", "Morning rush: zoning sustains the most traffic in 5 of 6 buildings",
          ETD_NOTE + "Highest arrival rate each dispatcher sustains before its queue grows; dwell = 0")
 
 
