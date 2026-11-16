@@ -9,7 +9,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import replace
 from typing import Protocol
 
-from .models import LOBBY, Car, Passenger, Request
+from .models import LOBBY, Car, Direction, Passenger, Request
 from .rules import forecast
 
 Cost = Callable[[int], float]  # a passenger's total time -> penalty
@@ -42,6 +42,27 @@ class NearestCarDispatcher:
 
     def assign(self, request: Request, cars: Sequence[Car], now: int) -> int:
         return min(cars, key=lambda c: (abs(c.floor - request.source), c.id)).id
+
+
+class DirectionalDispatcher:
+    """Baseline: nearest car counting its direction, as classic collective control does.
+
+    A car already heading past the pickup, the right way, is as far as the
+    floors between them. Otherwise it must first finish its sweep: travel to
+    its farthest stop in its current direction, then come back.
+    """
+
+    def assign(self, request: Request, cars: Sequence[Car], now: int) -> int:
+        return min(cars, key=lambda c: (self.distance(c, request), c.id)).id
+
+    @staticmethod
+    def distance(car: Car, request: Request) -> int:
+        ahead = (request.source - car.floor) * car.direction >= 0
+        if car.direction is Direction.IDLE or (ahead and request.direction == car.direction):
+            return abs(request.source - car.floor)
+        stops = [p.dest for p in car.riders] + [p.source for p in car.waiting]
+        turn = max(stops, key=lambda f: (f - car.floor) * car.direction, default=car.floor)
+        return abs(turn - car.floor) + abs(turn - request.source)
 
 
 class ZoneDispatcher:
@@ -88,10 +109,10 @@ class EtdDispatcher:
 
 
 def make_dispatcher(name: str, floors: int) -> Dispatcher:
-    """'etd', 'nearest', 'zone', 'round-robin', or 'etd-p<k>' (ETD with cost total_time**k)."""
+    """'etd', 'nearest', 'directional', 'zone', 'round-robin', or 'etd-p<k>' (ETD with cost total_time**k)."""
     if name.startswith("etd-p"):
         return EtdDispatcher(power_cost(float(name.removeprefix("etd-p"))))
-    makers = {"etd": EtdDispatcher, "nearest": NearestCarDispatcher,
+    makers = {"etd": EtdDispatcher, "nearest": NearestCarDispatcher, "directional": DirectionalDispatcher,
               "zone": lambda: ZoneDispatcher(floors), "round-robin": RoundRobinDispatcher}
     if name not in makers:
         raise ValueError(f"unknown dispatcher {name!r}; choose from {list(makers)} or etd-p<k>")

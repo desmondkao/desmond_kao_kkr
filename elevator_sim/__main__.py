@@ -27,7 +27,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--floors", type=int, required=True)
     ap.add_argument("--cars", type=int, default=3)
     ap.add_argument("--capacity", type=int, default=10)
-    ap.add_argument("--dispatcher", default="etd", help="etd (default), nearest, zone, round-robin, etd-p<k>")
+    ap.add_argument("--dispatcher", default="etd", help="etd (default), nearest, directional, zone, round-robin, etd-p<k>")
     ap.add_argument("--dwell", type=int, default=0, help="extra ticks per stop (default 0)")
     ap.add_argument("--express", type=parse_express, default={}, metavar="CARS:FLOORS",
                     help="e.g. 2,3:1,16-30 = cars 2 and 3 stop only at floor 1 and floors 16-30")

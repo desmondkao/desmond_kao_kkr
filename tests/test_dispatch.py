@@ -6,11 +6,12 @@ import pytest
 
 from elevator_sim import Car, Config, Direction, Passenger, Request, Simulation
 from elevator_sim.csv_io import load_requests
-from elevator_sim.dispatch import EtdDispatcher, NearestCarDispatcher, RoundRobinDispatcher, make_dispatcher
+from elevator_sim.dispatch import (DirectionalDispatcher, EtdDispatcher, NearestCarDispatcher, RoundRobinDispatcher,
+                                   make_dispatcher)
 from helpers import random_requests
 
 FLOORS = 20
-DISPATCHERS = ("round-robin", "nearest", "zone", "etd", "etd-p1")
+DISPATCHERS = ("round-robin", "nearest", "directional", "zone", "etd", "etd-p1")
 
 
 def run(requests, dispatcher, floors=FLOORS, cars=3, capacity=6):
@@ -44,6 +45,24 @@ def test_etd_prefers_far_empty_car_over_near_busy_one():
     request = Request(10, "new", 3, 1)
     assert NearestCarDispatcher().assign(request, [busy, empty], now=10) == 0
     assert EtdDispatcher().assign(request, [busy, empty], now=10) == 1
+
+
+def test_directional_skips_a_car_heading_away():
+    # Caller at floor 3 going down. Car 0 is at floor 5 but carrying riders up to 30,
+    # so it must reach 30 first: 25 + 27 = 52 floors. Car 1 is idle 17 floors away.
+    riders = [Passenger(Request(0, "r", 1, 30), car_id=0, board_time=0)]
+    busy = Car(0, capacity=8, floor=5, direction=Direction.UP, riders=riders)
+    idle = Car(1, capacity=8, floor=20)
+    request = Request(10, "new", 3, 1)
+    assert DirectionalDispatcher.distance(busy, request) == 52
+    assert DirectionalDispatcher().assign(request, [busy, idle], now=10) == 1
+
+
+def test_directional_picks_a_car_coming_its_way():
+    coming = Car(0, capacity=8, floor=2, direction=Direction.UP,
+                 riders=[Passenger(Request(0, "r", 1, 20), car_id=0, board_time=0)])
+    request = Request(10, "new", 6, 15)
+    assert DirectionalDispatcher.distance(coming, request) == 4
 
 
 def test_etd_does_not_mutate_cars():

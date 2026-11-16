@@ -39,7 +39,7 @@ class Experiment:
 
 BASE = {
     "algorithms": Experiment("Which dispatcher works best?",
-                             {"standard": STANDARD}, ("round-robin", "nearest", "zone", "etd")),
+                             {"standard": STANDARD}, ("round-robin", "nearest", "directional", "zone", "etd")),
     "fairness": Experiment("How does ETD's cost exponent trade average time against the worst case?",
                            {"standard": STANDARD}, ("etd-p1", "etd-p2", "etd-p4"), rates=(0.8,)),
     "express": Experiment("Do express cars (2 of 4 serve only the lobby and floors 16-30) help?",
