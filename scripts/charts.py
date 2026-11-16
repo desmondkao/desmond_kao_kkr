@@ -154,7 +154,7 @@ def fairness():
         ax.set_title(label + ", ticks", loc="left", color=INK)
         ax.grid(axis="x", visible=False)
     axes[0].legend(loc="upper center", bbox_to_anchor=(1.09, -0.09), ncol=3)
-    save(fig, "fairness.png", "Higher p cuts the worst case everywhere; the mean moves only in up-peak",
+    save(fig, "fairness.png", "Higher p cuts the worst case everywhere, at a small cost to the mean",
          ETD_NOTE + "ETD with cost = total_time^p, 0.8 passengers/tick, dwell = 1, 10 seeds x 1200 ticks")
 
 
