@@ -12,7 +12,7 @@ Python 3.10+, standard library only. Tests use pytest; the charts script uses ma
 python -m elevator_sim examples/spec_example.csv --floors 60 --cars 2
 ```
 
-This prints a summary and writes `output/positions.csv` (each car's floor at every tick, from 0), `output/passengers.csv` and `output/summary.json`. The input is `time,id,source,dest`; the header is optional.
+This prints a summary and writes `output/positions.csv` (each car's floor at every tick, from 0), `output/passengers.csv` and `output/summary.json`. The input is a CSV with the header `time,id,source,dest`, as in the brief.
 
 Options: `--cars`, `--capacity`, `--dispatcher` (`etd`, `zone`, `nearest`, `directional`, `round-robin`), `--dwell` (extra ticks per stop, default 0), `--express 2,3:1,16-30` (cars 2 and 3 only stop at floor 1 and floors 16-30), `--start-floor`.
 
@@ -50,7 +50,15 @@ Each tick (`engine.py`): assign new requests → at each car, riders get off, th
 
 ## Results
 
-30 floors, 4 cars, capacity 10; 10 seeds × 1200 ticks. Mean total time in ticks at 0.8 passengers per tick, with free stops (dwell 0):
+Three findings:
+
+1. **Below full load, ETD gives the fastest trips** in every traffic pattern and building size I tested.
+2. **In a heavy morning rush, zoning carries more people.** ETD's per-passenger choices add stops. Express cars close the gap.
+3. **The cost exponent trades average speed for worst-case speed**, which is the fairness/efficiency dial the brief asks about.
+
+Setup: 30 floors, 4 cars, capacity 10; four office traffic patterns with random arrivals; 10 random days × 1200 ticks per setting, the same days for every dispatcher.
+
+**1. ETD is fastest.** Mean total time in ticks at 0.8 passengers per tick, free stops:
 
 | Scenario | Round robin | Nearest car | Nearest, direction-aware | Zone | ETD |
 |---|---|---|---|---|---|
@@ -59,29 +67,25 @@ Each tick (`engine.py`): assign new requests → at each car, riders get off, th
 | Lunch | 41.5 | 39.9 | 29.2 | 35.2 | **23.6** |
 | Interfloor | 35.4 | 31.3 | 22.3 | 41.3 | **18.4** |
 
-ETD is 15-33% faster than the best alternative in each row. The direction-aware nearest car (a car only counts as close if it is already heading to the caller the right way) is the classic collective-control rule and the strongest simple baseline outside the morning rush.
+ETD is 15-33% faster than the best alternative in each row. Direction-aware nearest car (a car only counts as close if it's already heading to the caller the right way) is the classic rule most systems start from.
 
 ![dispatchers](docs/charts/algorithms.png)
 
-**Where ETD loses: the morning rush.** In the simulated up-peak with one-tick stops, ETD's queue keeps growing (ETD 85, zone 58). ETD places each lobby passenger wherever is best for them right now, so every car gets a mix of destinations: an ETD car leaving the lobby stops at about 8 floors and climbs to floor 28 on average, against 4-5 floors and floor 19 for a zoned car. Longer round trips mean each car carries fewer people per minute. Making cars 2-3 express to floors 16-30 brings ETD level with zoning (57), but costs 4-5 ticks at lunch, when trips go both ways. With free stops the same thing happens at a higher load: ETD sustains 0.88 passengers per tick in up-peak, zoning 1.21 (see building sizes below). The mechanism is general; the load at which it kicks in depends on my synthetic traffic.
+The same holds in other buildings (10-60 floors, 2-8 cars). A fixed arrival rate can't be compared across buildings, so I first measured each building's *handling capacity*: the highest arrival rate before the number of people inside keeps growing. At half of that, ETD is fastest in all 24 cases, by 5-29%.
+
+**2. The morning rush.** When stops cost a tick, ETD's queue keeps growing in up-peak (mean 85 ticks, against 58 for zoning). ETD puts each lobby passenger wherever is best for them right now, so every car gets a mix of destinations. An ETD car leaving the lobby stops at about 8 floors and climbs to floor 28; a zoned car stops at 4-5 and reaches floor 19. Longer round trips carry fewer people per minute.
+
+Making cars 2-3 express to floors 16-30 brings ETD level with zoning (57), but costs 4-5 ticks at lunch. Across building sizes, zoning carries 3-28% more morning-rush traffic than ETD in all but one case. The mechanism is general; the load where it starts depends on my synthetic traffic.
 
 ![overload](docs/charts/overload.png)
 
-**Fairness.** With one-tick stops, raising the cost exponent from 1 to 4 cuts the worst trip by 8-20%, and the mean rises by up to 6%. In the overloaded up-peak both improve. With free stops the exponent makes little difference. I kept p = 2 as a middle ground.
+![capacity](docs/charts/capacity.png)
+
+**3. Fairness.** Each passenger costs `total_time^p`. With one-tick stops, going from p = 1 to p = 4 cuts the worst trip by 8-20% and raises the mean by up to 6%. I kept p = 2 as a middle ground.
 
 ![fairness](docs/charts/fairness.png)
 
-**Other building sizes.** A fixed arrival rate can't be compared across buildings: 0.8 per tick swamps 2 cars but barely loads 8. So for six buildings (10, 30 and 60 floors; 2, 4 and 8 cars) I measured each dispatcher's *handling capacity*, the highest arrival rate it sustains before the number of people in the building keeps growing, and then compared trip times at half of each building's capacity.
-
-- At half capacity, ETD gives the fastest trips in all 24 cases (6 buildings × up-peak and lunch × dwell 0 and 1), by 5-29%. The gap is smallest with 2 cars, where there is little choice to make.
-- In the morning rush, zoning sustains the most traffic in 11 of 12 cases (6 buildings × dwell 0 and 1), 3-28% more than ETD; the exception is 30 floors with 8 cars and free stops, where ETD is 4% ahead. At lunch ETD's capacity is the highest in 10 of 12 cases and within 4% in the other two.
-- Nearest car, even direction-aware, falls apart in up-peak with many cars: every lobby call goes to whichever car is at the lobby.
-
-So the trade-off from the 30-floor building holds at every size: ETD is faster, zoning carries more in the morning rush.
-
-![capacity](docs/charts/capacity.png)
-
-Full tables are in `results/`; more charts are in `docs/charts/`.
+Full tables are in `results/`.
 
 ## Assumptions
 
