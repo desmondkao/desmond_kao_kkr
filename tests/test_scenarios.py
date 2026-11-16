@@ -6,6 +6,7 @@ import pytest
 
 from elevator_sim import Config
 from elevator_sim.benchmark import EXPERIMENTS, Experiment, run, to_markdown
+from elevator_sim.capacity import handling_capacity, keeps_up
 from elevator_sim.dispatch import RoundRobinDispatcher, make_dispatcher
 from elevator_sim.engine import Simulation
 from elevator_sim.scenarios import LOBBY, SCENARIOS, generate
@@ -43,3 +44,10 @@ def test_experiments_use_known_names():
     for exp in EXPERIMENTS.values():
         for name in exp.dispatchers:
             make_dispatcher(name, 30)
+
+
+def test_capacity_search_finds_where_the_queue_starts_growing():
+    config = Config(10, 2, 4)
+    rate = handling_capacity(config, "lunch", "round-robin", seeds=2, duration=1200, steps=2)
+    assert keeps_up(config, "lunch", "round-robin", rate / 2, seeds=2, duration=1200)
+    assert not keeps_up(config, "lunch", "round-robin", rate * 2, seeds=2, duration=1200)

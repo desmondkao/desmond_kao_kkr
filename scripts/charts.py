@@ -1,6 +1,6 @@
 """Regenerate every chart in docs/charts/: python scripts/charts.py
 
-algorithms and fairness read results/*.csv (python -m elevator_sim.benchmark);
+algorithms, fairness and capacity read results/*.csv (benchmark and capacity modules);
 overload and load_sweep run the simulator directly with fixed seeds.
 """
 
@@ -28,11 +28,11 @@ OUT = ROOT / "docs" / "charts"
 INK, MUTED, GRID, SURFACE = "#0b0b0b", "#52514e", "#e4e3df", "#fcfcfb"
 # One fixed color per dispatcher across every chart.
 COLOR = {"etd": "#2a78d6", "zone": "#eb6834", "etd + express": "#1baf7a",
-         "round-robin": "#eda100", "nearest": "#e87ba4",
+         "round-robin": "#eda100", "nearest": "#e87ba4", "directional": "#8e6bd1",
          "etd-p1": "#9cc2f0", "etd-p2": "#2a78d6", "etd-p4": "#0d3f7f"}
-BASELINES = ("round-robin", "nearest", "zone", "etd")
+BASELINES = ("round-robin", "nearest", "directional", "zone", "etd")
 LABEL = {"etd": "ETD", "zone": "Zone", "etd + express": "ETD + express", "round-robin": "Round robin",
-         "nearest": "Nearest car", "etd-p1": "ETD, p = 1", "etd-p2": "ETD, p = 2", "etd-p4": "ETD, p = 4"}
+         "nearest": "Nearest car", "directional": "Nearest car, direction-aware", "etd-p1": "ETD, p = 1", "etd-p2": "ETD, p = 2", "etd-p4": "ETD, p = 4"}
 ETD_NOTE = "ETD = estimated time to destination. "
 
 plt.rcParams.update({
@@ -70,7 +70,7 @@ def save(fig, name, title, subtitle):
 def algorithms():
     fig, axes = plt.subplots(1, 2, sharey=True)
     fig.subplots_adjust(top=0.80, bottom=0.17, wspace=0.08)
-    offsets = np.linspace(-0.27, 0.27, len(BASELINES))
+    offsets = np.linspace(-0.3, 0.3, len(BASELINES))
     for ax, dwell in zip(axes, (0, 1)):
         rows = [r for r in read_rows(f"algorithms_dwell{dwell}") if r["rate"] == 0.8]
         for d, dx in zip(BASELINES, offsets):
@@ -88,7 +88,7 @@ def algorithms():
     axes[0].set_yticks(ticks, [str(t) for t in ticks])
     axes[0].yaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
     axes[0].set_ylabel("mean total time, ticks (log scale)")
-    axes[0].legend(loc="upper center", bbox_to_anchor=(1.04, -0.09), ncol=4)
+    axes[0].legend(loc="upper center", bbox_to_anchor=(1.04, -0.09), ncol=5, fontsize=14)
     save(fig, "algorithms.png", "ETD wins every pattern when stops are free; with 1-tick stops it loses up-peak",
          ETD_NOTE + "Mean total time ± 95% CI over 10 seeds at 0.8 passengers/tick, 30 floors, 4 cars")
 
@@ -158,9 +158,30 @@ def fairness():
          ETD_NOTE + "ETD with cost = total_time^p, 0.8 passengers/tick, dwell = 1, 10 seeds x 1200 ticks")
 
 
+def capacity():
+    with open(ROOT / "results" / "capacity_dwell0.csv") as f:
+        cap = {(r["building"], r["scenario"], r["dispatcher"]): float(r["capacity"]) for r in csv.DictReader(f)}
+    buildings = list(dict.fromkeys(b for b, _, _ in cap))
+    fig, axes = plt.subplots(1, 2, sharey=True)
+    fig.subplots_adjust(top=0.80, bottom=0.27, wspace=0.06)
+    offsets = np.linspace(-0.3, 0.3, len(BASELINES))
+    for ax, scenario in zip(axes, ("up-peak", "lunch")):
+        best = {b: max(cap[(b, scenario, d)] for d in BASELINES) for b in buildings}
+        for d, dx in zip(BASELINES, offsets):
+            ax.bar(np.arange(len(buildings)) + dx, [100 * cap[(b, scenario, d)] / best[b] for b in buildings],
+                   width=0.14, color=COLOR[d], label=LABEL[d])
+        ax.set_xticks(range(len(buildings)), [b.replace(", ", "\n") for b in buildings], fontsize=13)
+        ax.set_title(scenario, loc="left", color=INK)
+        ax.grid(axis="x", visible=False)
+    axes[0].set(ylabel="capacity, % of the best dispatcher", ylim=(0, 105))
+    axes[0].legend(loc="upper center", bbox_to_anchor=(1.03, -0.2), ncol=5, fontsize=14)
+    save(fig, "capacity.png", "Zoning carries the most morning-rush traffic in 5 of 6 buildings; at lunch ETD does",
+         ETD_NOTE + "Highest arrival rate each dispatcher sustains before its queue grows; dwell = 0")
+
+
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
-    charts = [algorithms, overload, load_sweep, fairness]
+    charts = [algorithms, overload, load_sweep, fairness, capacity]
     only = set(sys.argv[1:])
     for chart in charts:
         if not only or chart.__name__ in only:

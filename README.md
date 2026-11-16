@@ -2,7 +2,7 @@
 
 A discrete-time simulation of a destination-dispatch elevator system. Each passenger is assigned to a car when they call, and the assignment never changes. Time moves one floor per tick, and the simulation only sees requests whose time has come.
 
-The default scheduler is ETD (estimated time to destination). In my simulations it gives the lowest average trip time of the four dispatchers I tried in every traffic pattern, except a heavy morning rush where stops take time or the building is near capacity.
+The default scheduler is ETD (estimated time to destination). In my simulations it gives the lowest average trip time of the five dispatchers I tried in every traffic pattern, except a heavy morning rush where stops take time or the building is near capacity.
 
 Python 3.10+, standard library only. Tests use pytest; the charts script uses matplotlib.
 
@@ -14,7 +14,7 @@ python -m elevator_sim examples/spec_example.csv --floors 60 --cars 2
 
 This prints a summary and writes `output/positions.csv` (each car's floor at every tick, from 0), `output/passengers.csv` and `output/summary.json`. The input is `time,id,source,dest`; the header is optional.
 
-Options: `--cars`, `--capacity`, `--dispatcher` (`etd`, `zone`, `nearest`, `round-robin`), `--dwell` (extra ticks per stop, default 0), `--express 2,3:1,16-30` (cars 2 and 3 only stop at floor 1 and floors 16-30), `--start-floor`.
+Options: `--cars`, `--capacity`, `--dispatcher` (`etd`, `zone`, `nearest`, `directional`, `round-robin`), `--dwell` (extra ticks per stop, default 0), `--express 2,3:1,16-30` (cars 2 and 3 only stop at floor 1 and floors 16-30), `--start-floor`.
 
 From Python:
 
@@ -30,6 +30,7 @@ Other commands:
 ```bash
 python -m pytest                    # tests
 python -m elevator_sim.benchmark    # experiments -> results/ (about 5 min)
+python -m elevator_sim.capacity     # building-size comparison -> results/ (about 30 min)
 python scripts/charts.py            # charts -> docs/charts/
 ```
 
@@ -51,12 +52,14 @@ Each tick (`engine.py`): assign new requests → at each car, riders get off, th
 
 30 floors, 4 cars, capacity 10; 10 seeds × 1200 ticks. Mean total time in ticks at 0.8 passengers per tick, with free stops (dwell 0):
 
-| Scenario | Round robin | Nearest car | Zone | ETD |
-|---|---|---|---|---|
-| Up-peak | 46.6 | 94.9 | 39.0 | **33.3** |
-| Down-peak | 45.2 | 52.8 | 51.5 | **26.0** |
-| Lunch | 41.5 | 39.9 | 35.2 | **23.6** |
-| Interfloor | 35.4 | 31.3 | 41.3 | **18.4** |
+| Scenario | Round robin | Nearest car | Nearest, direction-aware | Zone | ETD |
+|---|---|---|---|---|---|
+| Up-peak | 46.6 | 94.9 | 78.0 | 39.0 | **33.3** |
+| Down-peak | 45.2 | 52.8 | 38.9 | 51.5 | **26.0** |
+| Lunch | 41.5 | 39.9 | 29.2 | 35.2 | **23.6** |
+| Interfloor | 35.4 | 31.3 | 22.3 | 41.3 | **18.4** |
+
+ETD is 15-33% faster than the best alternative in each row. The direction-aware nearest car (a car only counts as close if it is already heading to the caller the right way) is the classic collective-control rule and the strongest simple baseline outside the morning rush.
 
 ![dispatchers](docs/charts/algorithms.png)
 
@@ -67,6 +70,16 @@ Each tick (`engine.py`): assign new requests → at each car, riders get off, th
 **Fairness.** With one-tick stops, raising the cost exponent from 1 to 4 cuts the worst trip by 8-20%, and the mean rises by up to 6%. In the overloaded up-peak both improve. With free stops the exponent makes little difference. I kept p = 2 as a middle ground.
 
 ![fairness](docs/charts/fairness.png)
+
+**Other building sizes.** A fixed arrival rate can't be compared across buildings: 0.8 per tick swamps 2 cars but barely loads 8. So for six buildings (10, 30 and 60 floors; 2, 4 and 8 cars) I measured each dispatcher's *handling capacity*, the highest arrival rate it sustains before the number of people in the building keeps growing, and then compared trip times at half of each building's capacity.
+
+- At half capacity, ETD gives the fastest trips in all 24 cases (6 buildings × up-peak and lunch × dwell 0 and 1), by 5-29%. The gap is smallest with 2 cars, where there is little choice to make.
+- In the morning rush, zoning sustains the most traffic in 11 of 12 cases (6 buildings × dwell 0 and 1), 3-28% more than ETD; the exception is 30 floors with 8 cars and free stops, where ETD is 4% ahead. At lunch ETD's capacity is the highest in 10 of 12 cases and within 4% in the other two.
+- Nearest car, even direction-aware, falls apart in up-peak with many cars: every lobby call goes to whichever car is at the lobby.
+
+So the trade-off from the 30-floor building holds at every size: ETD is faster, zoning carries more in the morning rush.
+
+![capacity](docs/charts/capacity.png)
 
 Full tables are in `results/`; more charts are in `docs/charts/`.
 
@@ -79,7 +92,7 @@ Full tables are in `results/`; more charts are in `docs/charts/`.
 - Express cars only get trips where they serve both floors.
 - Bad input (floor out of range, source = dest, duplicate id, negative time) is rejected up front.
 - Synthetic traffic uses Poisson arrivals and trip mixes I chose (e.g. up-peak: 85% lobby to upper floors, 10% between upper floors, 5% down to the lobby). They are plausible, not measured.
-- One building is tested: 30 floors, 4 cars, capacity 10. Other sizes may rank the dispatchers differently.
+- The main experiments use one building (30 floors, 4 cars, capacity 10); the building-size comparison covers 10-60 floors and 2-8 cars, all with capacity 10.
 - A passenger becomes overdue after 3 × floors ticks, about one and a half round trips of an empty car. That threshold is a judgement call; it's configurable.
 
 ## Trade-offs
@@ -93,7 +106,7 @@ Full tables are in `results/`; more charts are in `docs/charts/`.
 
 - ETD slows down when one car has a long queue (each forecast replays it tick by tick).
 - Idle cars stay where they stop; there is no parking.
-- Constant speed, fixed door time, synthetic traffic, one building size: good for comparing dispatchers, not for absolute predictions.
+- Constant speed, fixed door time, synthetic traffic: good for comparing dispatchers, not for absolute predictions.
 
 ## With more time
 
