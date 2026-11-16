@@ -1,6 +1,6 @@
 # Elevator simulation
 
-A discrete-time simulation of a destination-dispatch elevator system. Each passenger is assigned to a car when they call, and the assignment never changes. Time moves one floor per tick, and the simulation only sees requests whose time has come.
+A discrete-time simulation of a destination-dispatch elevator system. Each passenger is assigned to a car when they call, and the assignment never changes. Time moves one floor per tick, one tick at a time even when requests skip ahead, and the simulation only sees requests whose time has come.
 
 Each new passenger is given the car that adds the least total trip time (ETD, estimated time to destination). It was the fastest of the five dispatchers I tested, except in a heavy morning rush, where zoning carries more people.
 
@@ -14,7 +14,7 @@ python -m elevator_sim examples/spec_example.csv --floors 60 --cars 2
 
 This prints a summary and writes `output/positions.csv` (each car's floor at every tick, from 0), `output/passengers.csv` and `output/summary.json`. The input is a CSV with the header `time,id,source,dest`, as in the brief.
 
-Options: `--cars`, `--capacity`, `--dispatcher` (`etd`, `zone`, `nearest`, `directional`, `round-robin`), `--dwell` (extra ticks per stop, default 0), `--express 2,3:1,16-30` (cars 2 and 3 only stop at floor 1 and floors 16-30), `--start-floor`.
+Options: `--floors`, `--cars`, `--capacity` (passengers per car), `--dispatcher` (`etd`, `zone`, `nearest`, `directional`, `round-robin`), `--dwell` (extra ticks per stop, default 0), `--express 2,3:1,16-30` (cars 2 and 3 only stop at floor 1 and floors 16-30), `--start-floor`.
 
 From Python:
 
@@ -40,7 +40,7 @@ Besides min/mean/max wait and total time, the summary reports total time divided
 
 Two decisions: **dispatch** picks a car for each new passenger, once (`dispatch.py`); **routing** picks each car's direction, every tick (`routing.py`).
 
-Each tick (`engine.py`): assign new requests → at each car, riders get off, the car picks a direction, and waiting passengers going that way get on → log positions → move. Only `feed.py` holds future requests, so nothing can look ahead.
+Each tick (`engine.py`): assign new requests → at each car, riders get off, the car picks a direction, and waiting passengers going that way get on, up to capacity → log positions → move. Only `feed.py` holds future requests, so nothing can look ahead.
 
 **ETD.** For each car, simulate its future with and without the new passenger, using the engine's own per-car rules (`rules.py`). The difference is the newcomer's trip time plus the delay they add for everyone already assigned to that car. Pick the smallest. Each passenger costs `total_time^p` (default p = 2), so one very long trip counts more than several short ones.
 
@@ -95,7 +95,8 @@ For a building like the one simulated: use ETD by default, and switch to zoning 
 
 ## Assumptions and simplifications
 
-- Floors are 1 to n; floor 1 is the lobby. Cars start at floor 1.
+- "Car" means one elevator. Floors are 1 to n; floor 1 is the lobby. Cars start at floor 1.
+- Wait time is from request to boarding, travel time from boarding to drop-off, and total time is wait + travel, as in the brief.
 - One tick is one floor. Stops are free by default, because the brief only defines travel time; `--dwell` adds time per stop, and every experiment is also run at dwell 1.
 - In a tick a car drops off, picks a direction, boards, then moves. The log records the floor before the move.
 - Passengers board only their assigned car, only when it's going their way, first come first served.
@@ -120,11 +121,13 @@ For a building like the one simulated: use ETD by default, and switch to zoning 
 
 ## With more time
 
-- Make ETD account for future arrivals, or switch to grouping by destination when the morning rush is detected.
-- Park idle cars where requests have been coming from.
-- Solve small cases exactly to measure how far ETD is from optimal.
-- Cache forecasts within a tick and cap their length.
-- Run real building logs through it.
+In order, each step building on the last:
+
+1. **Calibrate with real data.** Destination-dispatch kiosks log every call. Convert a building's logs to `time,id,source,dest`, set ticks to seconds and the real door time, and replay them against its current controller.
+2. **Fix the known weakness simply.** Detect the morning rush from the lobby arrival rate and switch from ETD to zoning or an express bank.
+3. **Tune per building.** Search the cost exponent, the zone boundaries and the switch threshold on the replayed logs.
+4. **Try a learned policy only if a gap remains.** Reinforcement-learning dispatchers have beaten heuristics in simulation (Crites and Barto, 1995; recent deep-RL work), and this simulator is where one would be trained and tested. They are harder to explain and need hard limits so nobody is starved.
+5. **Engineering.** Cache forecasts within a tick, park idle cars where demand comes from, and solve small cases exactly to measure how far ETD is from optimal.
 
 ## Time spent
 
