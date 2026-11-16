@@ -1,10 +1,10 @@
 # Elevator simulation
 
-A discrete-time simulation of a destination-dispatch elevator system. Each passenger is assigned to a car when they call, and the assignment never changes. Time moves one floor per tick, one tick at a time even when requests skip ahead, and the simulation only sees requests whose time has come.
+A discrete-time simulation of a destination-dispatch elevator system. Each passenger is assigned a car the moment they call, permanently. The clock advances one floor per tick, and the controller only sees requests whose time has come.
 
-Each new passenger is given the car that adds the least total trip time (ETD, estimated time to destination). It was the fastest of the five dispatchers I tested, except in a heavy morning rush, where zoning carries more people.
+**Approach:** each new passenger gets the car that adds the least total trip time (ETD, estimated time to destination). Cars sweep with LOOK, and a guard ensures nobody waits forever.
 
-Python 3.10+, standard library only. Tests use pytest; the charts script uses matplotlib.
+Python 3.10+, standard library only. Tests use pytest; charts use matplotlib.
 
 ## Running it
 
@@ -12,9 +12,18 @@ Python 3.10+, standard library only. Tests use pytest; the charts script uses ma
 python -m elevator_sim examples/spec_example.csv --floors 60 --cars 2
 ```
 
-This prints a summary and writes `output/positions.csv` (each car's floor at every tick, from 0), `output/passengers.csv` and `output/summary.json`. The input is a CSV with the header `time,id,source,dest`, as in the brief.
+The input is a CSV with the header `time,id,source,dest`, as in the brief. The run prints min/mean/max wait and total time, plus total ÷ ideal time (`|dest - source|`, which nothing can beat). It writes:
+- `output/positions.csv`: every car's floor at every tick, from 0;
+- `output/passengers.csv`;
+- `output/summary.json`.
 
-Options: `--floors`, `--cars`, `--capacity` (passengers per car), `--dispatcher` (`etd`, `zone`, `nearest`, `directional`, `round-robin`), `--dwell` (extra ticks per stop, default 0), `--express 2,3:1,16-30` (cars 2 and 3 only stop at floor 1 and floors 16-30), `--start-floor`.
+| Option | Meaning |
+|---|---|
+| `--floors`, `--cars`, `--capacity` | Building size; capacity is passengers per car |
+| `--dispatcher` | `etd` (default), `zone`, `nearest`, `directional`, `round-robin` |
+| `--dwell` | Extra ticks per stop (default 0) |
+| `--express 2,3:1,16-30` | Cars 2 and 3 stop only at floor 1 and floors 16-30 |
+| `--start-floor` | Where cars begin |
 
 From Python:
 
@@ -34,33 +43,41 @@ python -m elevator_sim.capacity     # building-size comparison -> results/ (abou
 python scripts/charts.py            # charts -> docs/charts/
 ```
 
-Besides min/mean/max wait and total time, the summary reports total time divided by the ideal (`|dest - source|`, which no scheduler can beat).
-
 ## Design
 
-Two decisions: **dispatch** picks a car for each new passenger, once (`dispatch.py`); **routing** picks each car's direction, every tick (`routing.py`).
+There are two decisions:
+- **dispatch** picks a passenger's car once, at request time (`dispatch.py`);
+- **routing** picks each car's direction every tick (`routing.py`).
 
-Each tick (`engine.py`): assign new requests → at each car, riders get off, the car picks a direction, and waiting passengers going that way get on, up to capacity → log positions → move. Only `feed.py` holds future requests, so nothing can look ahead.
+Each tick (`engine.py`): assign new requests → at each car, riders get off, the car picks a direction, and passengers waiting there and going that way board, up to capacity → log positions → move. Only `feed.py` holds future requests, so nothing can look ahead.
 
-**ETD.** For each car, simulate its future with and without the new passenger, using the engine's own per-car rules (`rules.py`). The difference is the newcomer's trip time plus the delay they add for everyone already assigned to that car. Pick the smallest. Each passenger costs `total_time^p` (default p = 2), so one very long trip counts more than several short ones.
+**ETD.** For each car, simulate its future with and without the newcomer, using the engine's own per-car rules (`rules.py`). The difference is the newcomer's trip plus the delay they add for everyone already on that car. Pick the smallest. Each passenger costs `total_time^p` (default p = 2), so one long trip counts more than several short ones.
 
-On the brief's three-passenger example, round robin and plain nearest car make passenger3 wait 71 ticks, because they give them the car heading up to floor 51. ETD, direction-aware nearest car and zoning all give 19. An example that small can't separate the better dispatchers; the benchmarks below do.
+**LOOK** (the classic elevator sweep). Keep going while there are pickups ahead, otherwise turn around. Passengers only board a car going their way, so once anyone is aboard, the direction is fixed.
 
-**LOOK routing** (the classic elevator sweep). Keep going while there are pickups ahead, otherwise turn around. Passengers only board a car going their way, so once anyone is aboard, the direction is fixed.
-
-**No one waits forever.** LOOK with a capacity limit can pass the same floor indefinitely if the car keeps filling up first (there's a test for this). After `max_wait` ticks (default 3 × floors), a car's oldest waiting passenger becomes its target and gets a reserved seat. Nobody is skipped forever, though under overload several overdue passengers queue behind each other.
+**Nobody waits forever.** LOOK with a capacity limit can pass a floor indefinitely if the car keeps filling up first (a test shows this). After 3 × floors ticks, a car's oldest waiting passenger becomes its target and gets a reserved seat. Nobody is skipped forever, though under overload several overdue passengers queue behind each other.
 
 ## Results
 
-Three findings:
+1. **Below full load, ETD is fastest** in every traffic pattern and building size tested.
+2. **In a heavy morning rush, zoning carries more people;** express cars close the gap.
+3. **The cost exponent p trades average speed for worst-case speed:** the fairness/efficiency dial the brief asks about.
 
-1. **Below full load, ETD gives the fastest trips** in every traffic pattern and building size I tested.
-2. **In a heavy morning rush, zoning carries more people.** ETD's per-passenger choices add stops. Express cars close the gap.
-3. **The cost exponent trades average speed for worst-case speed**, which is the fairness/efficiency dial the brief asks about.
+**Setup:**
+- Building: 30 floors, 4 cars, capacity 10.
+- Runs: 10 random days × 1200 ticks per setting, the same days for every dispatcher.
+- Traffic: four office patterns with random arrivals:
+  - up-peak (mostly lobby → up);
+  - down-peak (mostly → lobby);
+  - lunch (both ways);
+  - interfloor (between upper floors).
+- Stops: "free stops" is dwell 0; "one-tick stops" is dwell 1.
 
-Setup: 30 floors, 4 cars, capacity 10; 10 random days × 1200 ticks per setting, the same days for every dispatcher. Four office traffic patterns with random arrivals: up-peak (morning, mostly lobby → up), down-peak (evening, mostly → lobby), lunch (both ways through the lobby) and interfloor (between upper floors). "Free stops" means a stop takes no extra time (dwell 0); "one-tick stops" means dwell 1.
+Full tables are in `results/`.
 
-**1. ETD is fastest.** Mean total time in ticks at 0.8 passengers per tick, free stops:
+### 1. ETD is fastest
+
+Mean total time in ticks, 0.8 passengers per tick, free stops:
 
 | Scenario | Round robin | Nearest car | Nearest, direction-aware | Zone | ETD |
 |---|---|---|---|---|---|
@@ -69,65 +86,78 @@ Setup: 30 floors, 4 cars, capacity 10; 10 random days × 1200 ticks per setting,
 | Lunch | 41.5 | 39.9 | 29.2 | 35.2 | **23.6** |
 | Interfloor | 35.4 | 31.3 | 22.3 | 41.3 | **18.4** |
 
-ETD is 15-33% faster than the best alternative in each row. Direction-aware nearest car (a car only counts as close if it's already heading to the caller the right way) is the classic rule most systems start from.
+ETD beats the best alternative in each row by 15-33%. Direction-aware nearest car, where a car counts as close only if it's already heading to the caller the right way, is the classic rule.
 
 ![dispatchers](docs/charts/algorithms.png)
 
-The same holds in other buildings (10-60 floors, 2-8 cars). A fixed arrival rate can't be compared across buildings, so I first measured each building's *handling capacity*: the highest arrival rate before the number of people inside keeps growing. At half of that, ETD is fastest in all 24 cases (6 buildings × up-peak and lunch × free and one-tick stops), by 5-29%. In two cases, both with 2 cars where there is little choice to make, the margin is within the confidence interval.
+The brief's three-passenger example can't separate the better dispatchers. Round robin and plain nearest car make passenger3 wait 71 ticks; ETD, direction-aware nearest car and zoning all give 19.
 
-**2. The morning rush.** In up-peak, ETD's queue starts growing at a lower arrival rate than zoning's: 0.88 passengers per tick against 1.21 with free stops. One-tick stops lower that point further, so at 0.8 per tick ETD is already overloaded (mean 85 ticks, against 58 for zoning). ETD sends each lobby passenger to whichever car suits them, so every car gets a mix of destinations. An ETD car leaving the lobby stops at about 8 floors and climbs to floor 28; a zoned car stops at 4-5 and stays below floor 20. Longer round trips carry fewer people per minute.
+**Other buildings** (10-60 floors, 2-8 cars):
+- Fixed arrival rates aren't comparable across buildings. So I measured each building's *handling capacity*: the highest arrival rate before the number of people inside keeps growing.
+- At half capacity, ETD is fastest in all 24 cases (6 buildings × up-peak and lunch × free and one-tick stops), by 5-29%.
+- Two 2-car cases, where there's little choice to make, are within the confidence interval.
 
-Making cars 2-3 express to floors 16-30 brings ETD level with zoning (57), but costs 4-5 ticks at lunch. Across building sizes, ETD's morning-rush capacity is 3-28% below zoning's in all but one case. The mechanism is general; the load where it starts depends on my synthetic traffic.
+### 2. The morning rush
+
+In up-peak, ETD's queue starts growing at a lower arrival rate than zoning's: 0.88 vs 1.21 passengers per tick, with free stops. One-tick stops lower that point further. At 0.8 per tick ETD is then overloaded: mean 85 ticks vs 58 for zoning.
+
+**Why:** ETD sends each lobby passenger to whichever car suits them, so every car gets a mix of destinations. An ETD car leaving the lobby stops at about 8 floors and climbs to floor 28; a zoned car stops at 4-5 and stays below 20. Longer round trips carry fewer people per minute.
+
+**What helps:**
+- Making cars 2-3 express to floors 16-30 brings ETD level with zoning (57), at a cost of 4-5 ticks at lunch.
+- Across building sizes, ETD's morning-rush capacity is 3-28% below zoning's in all but one case.
+
+The mechanism is general; the load where it starts depends on my synthetic traffic.
 
 ![overload](docs/charts/overload.png)
 
 ![capacity](docs/charts/capacity.png)
 
-**3. Fairness.** Each passenger costs `total_time^p`. With one-tick stops, going from p = 1 to p = 4 cuts the worst trip by 8-20% and raises the mean by up to 6%. With free stops p barely matters. I kept p = 2 as a middle ground.
+### 3. Fairness
+
+With one-tick stops, raising p from 1 to 4 cuts the worst trip by 8-20% and raises the mean by up to 6%. With free stops, p barely matters. I kept p = 2.
 
 ![fairness](docs/charts/fairness.png)
 
-Full tables are in `results/`.
-
 ## Recommendation
 
-For a building like the one simulated: use ETD by default, and switch to zoning or an express bank for the morning rush. Before relying on the numbers, calibrate the model with the building's own lobby logs (real arrival patterns, door times and travel speed).
+Use ETD by default and switch to zoning or an express bank for the morning rush. Calibrate first with the building's own lobby logs: arrival patterns, door times and travel speed.
 
 ## Assumptions and simplifications
 
-- "Car" means one elevator. Floors are 1 to n; floor 1 is the lobby. Cars start at floor 1.
-- Wait time is from request to boarding, travel time from boarding to drop-off, and total time is wait + travel, as in the brief.
-- One tick is one floor. Stops are free by default, because the brief only defines travel time; `--dwell` adds time per stop, and every experiment is also run at dwell 1.
-- In a tick a car drops off, picks a direction, boards, then moves. The log records the floor before the move.
-- Passengers board only their assigned car, only when it's going their way, first come first served.
-- Express cars only skip floors; they move at the same speed. They only get trips where they serve both floors.
-- Bad input (floor out of range, source = dest, duplicate id, negative time) is rejected up front.
-- Synthetic traffic uses Poisson arrivals and trip mixes I chose (e.g. up-peak: 85% lobby to upper floors, 10% between upper floors, 5% down to the lobby). They are plausible, not measured.
-- The main experiments use one building (30 floors, 4 cars, capacity 10); the building-size comparison covers 10-60 floors and 2-8 cars, all with capacity 10.
-- A passenger becomes overdue after 3 × floors ticks, about one and a half round trips of an empty car. That threshold is a judgement call; it's configurable.
+- **Building:** "car" means one elevator. Floors run 1 to n, with floor 1 the lobby. Cars start there.
+- **Time:** wait is request → boarding; travel is boarding → drop-off; total is wait + travel, as in the brief.
+- **Stops:** one tick per floor. Stops are free by default, since the brief only defines travel time; `--dwell` adds stop time, and every experiment is also run at dwell 1.
+- **Log:** records each car's floor before that tick's move.
+- **Boarding:** only your assigned car, only when it's going your way, first come first served.
+- **Express cars** skip floors but move at normal speed, and only get trips where they serve both floors.
+- **Validation:** bad input (floor out of range, source = dest, duplicate id, negative time) is rejected up front.
+- **Traffic:** synthetic Poisson arrivals with trip mixes I chose (e.g. up-peak: 85% lobby → up, 10% between floors, 5% down). Plausible, not measured.
+- **Buildings tested:** one main building; the size comparison covers 10-60 floors and 2-8 cars, all capacity 10.
+- **Overdue threshold:** 3 × floors, about one and a half empty round trips. A judgement call, and configurable.
 
 ## Trade-offs
 
-- **ETD** optimises the brief's objective (squared, to favour the worst trips), but it is greedy: it can't see future arrivals, which costs capacity near saturation.
-- **LOOK** leaves little to choose once riders are aboard. A look-ahead router I tried gained 1-4% and nothing on top of ETD, so I removed it.
-- **Forecasts reuse the engine's code**, so they can't drift from the real rules, at the cost of speed.
-- **The reserved seat** costs one seat, only while someone is overdue. My first version, which let only the overdue passenger board, wrecked throughput.
+- **ETD** optimises the brief's objective (squared, to favour the worst trips) but is greedy. It can't see future arrivals, which costs capacity near saturation.
+- **LOOK** leaves little to choose once riders are aboard. A look-ahead router I tried gained 1-4%, and nothing on top of ETD, so I removed it.
+- **Forecasts reuse the engine's code,** so they can't drift from the real rules, at the cost of speed.
+- **The reserved seat** costs one seat, and only while someone is overdue. My first version, which let only the overdue passenger board, wrecked throughput.
 
 ## Limitations
 
-- ETD slows down when one car has a long queue (each forecast replays it tick by tick).
-- Idle cars stay where they stop; there is no parking.
-- Constant speed, fixed door time, synthetic traffic: good for comparing dispatchers, not for absolute predictions.
+- ETD slows down when a car has a long queue, because each forecast replays it tick by tick.
+- No parking: idle cars stay where they stop.
+- Constant speed, fixed door time and synthetic traffic: fine for comparing dispatchers, not for absolute predictions.
 
 ## With more time
 
-In order, each step building on the last:
+In order, each building on the last:
 
-1. **Calibrate with real data.** Destination-dispatch kiosks log every call. Convert a building's logs to `time,id,source,dest`, set ticks to seconds and the real door time, and replay them against its current controller.
-2. **Fix the known weakness simply.** Detect the morning rush from the lobby arrival rate and switch from ETD to zoning or an express bank.
-3. **Tune per building.** Search the cost exponent, the zone boundaries and the switch threshold on the replayed logs.
-4. **Try a learned policy only if a gap remains.** Reinforcement-learning dispatchers have beaten heuristics in simulation (Crites and Barto, 1995; recent deep-RL work), and this simulator is where one would be trained and tested. They are harder to explain and need hard limits so nobody is starved.
-5. **Engineering.** Cache forecasts within a tick, park idle cars where demand comes from, and solve small cases exactly to measure how far ETD is from optimal.
+1. **Calibrate with real data.** Destination-dispatch kiosks log every call. Convert a building's logs to `time,id,source,dest`, set ticks to seconds and real door times, and replay them against its current controller.
+2. **Fix the known weakness simply.** Detect the morning rush from the lobby arrival rate and switch to zoning or an express bank.
+3. **Tune per building.** Search p, zone boundaries and the switch threshold on the replayed logs.
+4. **Try a learned policy only if a gap remains.** Reinforcement-learning dispatchers have beaten heuristics in simulation (Crites and Barto, 1995; recent deep-RL work), and this simulator is where one would be trained. They're harder to explain, though, and need hard limits so nobody is starved.
+5. **Engineering.** Cache forecasts within a tick, park idle cars near demand, and solve small cases exactly to measure ETD's distance from optimal.
 
 ## Time spent
 
