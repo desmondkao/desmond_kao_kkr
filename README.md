@@ -6,6 +6,8 @@ A discrete-time simulation of a destination-dispatch elevator system. Each passe
 
 Python 3.10+, standard library only. Tests use pytest; charts use matplotlib.
 
+Slides for the walkthrough: [`docs/presentation.pdf`](docs/presentation.pdf).
+
 ## Running it
 
 ```bash
